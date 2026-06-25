@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.sql50_progress.json
+dbs/*.sqlite
+dbs/*.sqlite-*
