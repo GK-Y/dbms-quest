@@ -104,7 +104,6 @@
     });
     catSel.value = state.catFilter;
 
-    node = view; // re-grab
     view.querySelectorAll(".filter").forEach(b => {
       b.classList.toggle("active", b.dataset.filter === state.filter);
       b.addEventListener("click", () => {
