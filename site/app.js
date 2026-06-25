@@ -241,8 +241,14 @@
   }
 
   // ---------- routing ----------
+  // Track where we came from so BACK can return to the Guide lesson, not just
+  // the Quest Log, when a quest was opened from inside a lesson.
+  let cameFrom = null; // { target, payload } of the previous view, set when navigating to a quest/lesson
+
   function go(target, payload) {
     if (target === "title") {
+      cameFrom = null;
+      state.currentLessonId = null;
       titleScreen.classList.add("active");
       hud.classList.add("hidden");
       view.innerHTML = "";
@@ -252,12 +258,23 @@
     titleScreen.classList.remove("active");
     hud.classList.remove("hidden");
     beep("nav");
+    // Clear currentLessonId when leaving the guide, so qlinks only record the
+    // guide origin when actually inside a lesson.
+    if (target !== "lesson" && target !== "quest") {
+      state.currentLessonId = null;
+    }
     if (target === "quests") renderQuests();
     else if (target === "quest") renderQuest(payload);
     else if (target === "lessons") renderLessons();
     else if (target === "lesson") renderLesson(payload);
     else if (target === "progress") renderProgress();
     window.scrollTo({ top: 0, behavior: "instant" });
+  }
+
+  // Open a quest and remember where we came from (used by guide qlinks).
+  function openQuestFrom(fromTarget, fromPayload, questId) {
+    cameFrom = { target: fromTarget, payload: fromPayload };
+    go("quest", questId);
   }
 
   function tpl(id) { return document.getElementById(id).content.cloneNode(true); }
@@ -427,6 +444,17 @@
     if (!q) { go("quests"); return; }
     const node = tpl("tpl-quest");
     view.replaceChildren(node);
+    // Wire the BACK button: return to the guide lesson if we came from one,
+    // otherwise return to the Quest Log.
+    const backBtn = view.querySelector(".back");
+    if (cameFrom && cameFrom.target === "lesson") {
+      backBtn.setAttribute("data-go", "lesson");
+      backBtn.setAttribute("data-payload", cameFrom.payload);
+      backBtn.innerHTML = '<svg class="ic"><use href="#ic-book"/></svg> GUIDE';
+    } else {
+      backBtn.setAttribute("data-go", "quests");
+      backBtn.innerHTML = '<svg class="ic"><use href="#ic-arrow"/></svg> BACK';
+    }
     const detail = document.getElementById("questDetail");
     const done = isDone(q.id);
     const runnable = q.runnable && q.setupSql;
@@ -614,6 +642,7 @@
   function renderLesson(id) {
     const l = DATA.lessons.find(x => x.id === id);
     if (!l) { go("lessons"); return; }
+    state.currentLessonId = id;
     const node = tpl("tpl-lesson");
     view.replaceChildren(node);
     const detail = document.getElementById("lessonDetail");
@@ -685,9 +714,31 @@
   // ---------- wire up ----------
   document.addEventListener("click", (e) => {
     const goBtn = e.target.closest("[data-go]");
-    if (goBtn) { e.preventDefault(); go(goBtn.dataset.go); return; }
+    if (goBtn) {
+      e.preventDefault();
+      const target = goBtn.dataset.go;
+      const payload = goBtn.dataset.payload || null;
+      // Returning to a lesson from a quest: clear cameFrom so we don't loop
+      if (target === "lesson" && cameFrom && cameFrom.target === "lesson") {
+        cameFrom = null;
+        go("lesson", payload);
+        return;
+      }
+      go(target, payload);
+      return;
+    }
     const qlink = e.target.closest("[data-quest]");
-    if (qlink) { e.preventDefault(); go("quest", qlink.dataset.quest); return; }
+    if (qlink) {
+      e.preventDefault();
+      // If we're inside a lesson, remember it so BACK returns to the guide
+      if (state.currentLessonId != null) {
+        cameFrom = { target: "lesson", payload: state.currentLessonId };
+      } else {
+        cameFrom = { target: "quests", payload: null };
+      }
+      go("quest", qlink.dataset.quest);
+      return;
+    }
     if (e.target.closest("#pressStart")) { go("quests"); }
   });
 
