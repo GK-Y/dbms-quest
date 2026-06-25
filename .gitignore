@@ -3,3 +3,10 @@ __pycache__/
 .sql50_progress.json
 dbs/*.sqlite
 dbs/*.sqlite-*
+
+# site backend: venv, portable mysql, datadir, logs
+site/.venv/
+mysql/
+mysql_data/
+*.log
+site/vendor/

@@ -10,46 +10,60 @@
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+  <div id="spriteMount"></div>
+  <div class="starfield" id="starfield"></div>
   <div class="crt"></div>
   <div class="scanlines"></div>
 
   <!-- TITLE SCREEN -->
   <section id="title" class="screen active">
-    <pre class="logo">
- ____  ____  ____  _   _  ____  __  __  _____
-|  _ \|  _ \/ ___|| | | |/ ___||  \/  || ____|
-| | | | |_) \___ \| | | |\___ \| |\/| ||  _|
-| |_| |  _ < ___) | |_| | ___) | |  | || |___
-|____/|_| \_\____/ \___/ |____/|_|  |_||_____|
-  ____   ___   ____ _   _ ___ _   _ _____
- / ___| / _ \ / ___| | | |_ _| \ | | ____|
- \___ \| | | | |  _| | | || ||  \| |  _|
-  ___) | |_| | |_| | |_| || || |\  | |___
- |____/ \___/ \____|\___/|___|_| \_|_____|
-</pre>
-    <p class="subtitle">SQL 50 :: A RETRO DBMS GRIND</p>
-    <p class="press-start" id="pressStart">&gt; PRESS START &lt;</p>
-    <div class="title-menu">
-      <button class="ghost-btn" data-go="quests">&gt; NEW GAME</button>
-      <button class="ghost-btn" data-go="lessons">&gt; CODEX</button>
-      <button class="ghost-btn" data-go="progress">&gt; STATS</button>
-      <button class="ghost-btn" id="resetBtn">&gt; RESET SAVE</button>
+    <div class="title-frame">
+      <div class="frame-corner tl"></div><div class="frame-corner tr"></div>
+      <div class="frame-corner bl"></div><div class="frame-corner br"></div>
+
+      <div class="title-art">
+        <svg class="float-sprite s1"><use href="#ic-crystal"/></svg>
+        <svg class="float-sprite s2"><use href="#ic-sword"/></svg>
+        <svg class="float-sprite s3"><use href="#ic-star"/></svg>
+        <svg class="float-sprite s4"><use href="#ic-controller"/></svg>
+        <svg class="float-sprite s5"><use href="#ic-trophy"/></svg>
+        <svg class="float-sprite s6"><use href="#ic-scroll"/></svg>
+      </div>
+
+      <h1 class="wordmark">DBMS&nbsp;QUEST</h1>
+      <p class="wordmark-sub">S Q L &nbsp; 5 0 &nbsp; :: &nbsp; R E T R O &nbsp; G R I N D</p>
+
+      <div class="avatar-block">
+        <p class="avatar-prompt">&gt; CHOOSE YOUR CLASS</p>
+        <div class="avatar-row" id="avatarRow"></div>
+        <p class="avatar-name" id="avatarName">-- KNIGHT --</p>
+      </div>
+
+      <p class="press-start" id="pressStart">&gt; PRESS START &lt;</p>
+
+      <div class="title-menu">
+        <button class="ghost-btn" data-go="quests"><svg class="ic"><use href="#ic-quest"/></svg> NEW GAME</button>
+        <button class="ghost-btn" data-go="lessons"><svg class="ic"><use href="#ic-book"/></svg> GUIDE</button>
+        <button class="ghost-btn" data-go="progress"><svg class="ic"><use href="#ic-trophy"/></svg> STATS</button>
+        <button class="ghost-btn" id="resetBtn"><svg class="ic"><use href="#ic-skull"/></svg> RESET SAVE</button>
+      </div>
+      <p class="hint-line">ARROW KEYS / CLICK. PROGRESS SAVES TO THIS BROWSER.</p>
     </div>
-    <p class="hint-line">USE ARROW KEYS / CLICK. PROGRESS SAVES TO THIS BROWSER.</p>
   </section>
 
   <!-- HUD -->
   <header id="hud" class="hud hidden">
     <div class="hud-left">
+      <svg class="ic hud-avatar" id="hudAvatar"><use href="#av-knight"/></svg>
       <span class="hud-label">LVL</span><span id="hudLevel">1</span>
-      <span class="hud-label">XP</span><span id="hudXp">0/50</span>
-      <span class="hud-label">CLEAR</span><span id="hudClear">0/50</span>
+      <svg class="ic ic-xp"><use href="#ic-crystal"/></svg><span id="hudXp">0/50</span>
+      <svg class="ic ic-trophy"><use href="#ic-trophy"/></svg><span id="hudClear">0/50</span>
     </div>
     <nav class="hud-nav">
-      <button data-go="quests">QUESTS</button>
-      <button data-go="lessons">CODEX</button>
-      <button data-go="progress">STATS</button>
-      <button data-go="title">TITLE</button>
+      <button data-go="quests"><svg class="ic"><use href="#ic-quest"/></svg>QUESTS</button>
+      <button data-go="lessons"><svg class="ic"><use href="#ic-book"/></svg>GUIDE</button>
+      <button data-go="progress"><svg class="ic"><use href="#ic-trophy"/></svg>STATS</button>
+      <button data-go="title"><svg class="ic"><use href="#ic-arrow"/></svg>TITLE</button>
     </nav>
   </header>
 
@@ -57,7 +71,7 @@
 
   <!-- TEMPLATES -->
   <template id="tpl-quests">
-    <h2 class="page-title">&gt; QUEST LOG</h2>
+    <h2 class="page-title"><svg class="ic"><use href="#ic-quest"/></svg> QUEST LOG</h2>
     <div class="filters">
       <button data-filter="all" class="filter active">ALL</button>
       <button data-filter="todo" class="filter">TODO</button>
@@ -68,19 +82,19 @@
   </template>
 
   <template id="tpl-quest">
-    <a class="back" data-go="quests">&lt; BACK</a>
+    <a class="back" data-go="quests"><svg class="ic"><use href="#ic-arrow"/></svg> BACK</a>
     <article id="questDetail" class="quest-detail"></article>
   </template>
 
   <template id="tpl-editor">
     <div class="editor-wrap">
-      <h3 class="editor-title">&gt; SQL CONSOLE</h3>
-      <textarea id="sqlInput" class="sql-input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="-- write your SQL here, then press RUN or TEST"></textarea>
+      <h3 class="editor-title"><svg class="ic"><use href="#ic-controller"/></svg> SQL CONSOLE <span class="console-engine" id="engineBadge"></span></h3>
+      <textarea id="sqlInput" class="sql-input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="-- write your MySQL here, then RUN or TEST (Ctrl+Enter = RUN, Shift+Ctrl+Enter = TEST)"></textarea>
       <div class="editor-bar">
-        <button id="runBtn" class="ed-btn run">&gt; RUN</button>
-        <button id="testBtn" class="ed-btn test">&gt; TEST</button>
-        <button id="loadSolBtn" class="ed-btn ghost">&gt; LOAD SOL</button>
-        <button id="clearBtn" class="ed-btn ghost">&gt; CLEAR</button>
+        <button id="runBtn" class="ed-btn run"><svg class="ic"><use href="#ic-play"/></svg> RUN</button>
+        <button id="testBtn" class="ed-btn test"><svg class="ic"><use href="#ic-sword"/></svg> TEST</button>
+        <button id="loadSolBtn" class="ed-btn ghost"><svg class="ic"><use href="#ic-key"/></svg> LOAD SOL</button>
+        <button id="clearBtn" class="ed-btn ghost"><svg class="ic"><use href="#ic-skull"/></svg> CLEAR</button>
         <span id="sqlStatus" class="sql-status"></span>
       </div>
       <div id="resultArea" class="result-area"></div>
@@ -88,26 +102,26 @@
   </template>
 
   <template id="tpl-lessons">
-    <h2 class="page-title">&gt; CODEX</h2>
+    <h2 class="page-title"><svg class="ic"><use href="#ic-book"/></svg> GUIDE</h2>
+    <p class="guide-intro">Tap a chapter. Numbers in the text jump to that quest.</p>
     <ul id="lessonList" class="lesson-list"></ul>
   </template>
 
   <template id="tpl-lesson">
-    <a class="back" data-go="lessons">&lt; BACK</a>
+    <a class="back" data-go="lessons"><svg class="ic"><use href="#ic-arrow"/></svg> BACK</a>
     <article id="lessonDetail" class="lesson-detail"></article>
   </template>
 
   <template id="tpl-progress">
-    <h2 class="page-title">&gt; STATS</h2>
+    <h2 class="page-title"><svg class="ic"><use href="#ic-trophy"/></svg> STATS</h2>
     <div id="progressBoard" class="progress-board"></div>
   </template>
 
   <footer class="footer">
-    <span>v1.0 // RETRO EDITION // </span>
+    <span>v2.0 // RETRO EDITION // </span>
     <a href="https://leetcode.com/studyplan/top-sql-50/" target="_blank" rel="noopener">SRC</a>
   </footer>
 
-  <script src="vendor/sql-wasm.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>

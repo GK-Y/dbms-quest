@@ -1,6 +1,6 @@
--- 196. Delete Duplicate Emails
--- Category: Advanced String Functions / Regex / Clause | Difficulty: Easy
--- Write your SQL below. Run: make test Q=196
-
--- DELETE ...
-
+DELETE FROM Person
+WHERE id NOT IN (
+  SELECT id FROM (
+    SELECT MIN(id) AS id FROM Person GROUP BY email
+  ) AS t
+);

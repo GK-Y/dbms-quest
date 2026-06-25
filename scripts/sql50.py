@@ -90,8 +90,8 @@ STARTER_FIXTURES = {
         "setup_sql": """
             DROP TABLE IF EXISTS World;
             CREATE TABLE World (
-              name TEXT PRIMARY KEY,
-              continent TEXT NOT NULL,
+              name VARCHAR(255) PRIMARY KEY,
+              continent VARCHAR(255) NOT NULL,
               area INTEGER NOT NULL,
               population INTEGER NOT NULL,
               gdp INTEGER NOT NULL
@@ -348,9 +348,9 @@ STARTER_FIXTURES = {
         "solution_sql": """
             DELETE FROM Person
             WHERE id NOT IN (
-              SELECT MIN(id)
-              FROM Person
-              GROUP BY email
+              SELECT id FROM (
+                SELECT MIN(id) AS id FROM Person GROUP BY email
+              ) AS t
             );
         """,
         "hint": "Keep the smallest id per email and delete rows whose id is not in that kept set.",

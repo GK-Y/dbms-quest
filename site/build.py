@@ -9,6 +9,7 @@ single JS file the static site loads with no server needed.
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -114,6 +115,21 @@ def md_to_html(text: str) -> str:
     return "\n".join(out)
 
 
+def linkify_ids(html: str, known_ids: set[str]) -> str:
+    """Wrap standalone question IDs (outside <pre>) in clickable quest links."""
+    id_re = re.compile(r'(?<![\w"])((?:1[0-9]{2,3}|[2-9][0-9]{2,3}))(?![\w"])')
+    parts = re.split(r"(<pre>.*?</pre>)", html, flags=re.S)
+    for i, seg in enumerate(parts):
+        if seg.startswith("<pre>"):
+            continue
+        def sub(m):
+            if m.group(1) in known_ids:
+                return f'<a class="qlink" data-quest="{m.group(1)}">{m.group(1)}</a>'
+            return m.group(0)
+        parts[i] = id_re.sub(sub, seg)
+    return "".join(parts)
+
+
 def main() -> int:
     out = {
         "source": "https://leetcode.com/studyplan/top-sql-50/",
@@ -182,6 +198,8 @@ def main() -> int:
             "orderSensitive": order_sensitive,
         })
 
+    known_ids = {str(q["id"]) for q in out["questions"]}
+
     lessons_dir = ROOT / "lessons"
     if lessons_dir.exists():
         for path in sorted(lessons_dir.glob("*.md")):
@@ -193,7 +211,7 @@ def main() -> int:
             out["lessons"].append({
                 "id": path.stem,
                 "title": title,
-                "html": md_to_html(raw),
+                "html": linkify_ids(md_to_html(raw), known_ids),
             })
 
     target = ROOT / "site" / "data.js"
