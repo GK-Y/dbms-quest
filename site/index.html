@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>DBMS QUEST // SQL 50</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=VT323&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="crt"></div>
+  <div class="scanlines"></div>
+
+  <!-- TITLE SCREEN -->
+  <section id="title" class="screen active">
+    <pre class="logo">
+ ____  ____  ____  _   _  ____  __  __  _____
+|  _ \|  _ \/ ___|| | | |/ ___||  \/  || ____|
+| | | | |_) \___ \| | | |\___ \| |\/| ||  _|
+| |_| |  _ < ___) | |_| | ___) | |  | || |___
+|____/|_| \_\____/ \___/ |____/|_|  |_||_____|
+  ____   ___   ____ _   _ ___ _   _ _____
+ / ___| / _ \ / ___| | | |_ _| \ | | ____|
+ \___ \| | | | |  _| | | || ||  \| |  _|
+  ___) | |_| | |_| | |_| || || |\  | |___
+ |____/ \___/ \____|\___/|___|_| \_|_____|
+</pre>
+    <p class="subtitle">SQL 50 :: A RETRO DBMS GRIND</p>
+    <p class="press-start" id="pressStart">&gt; PRESS START &lt;</p>
+    <div class="title-menu">
+      <button class="ghost-btn" data-go="quests">&gt; NEW GAME</button>
+      <button class="ghost-btn" data-go="lessons">&gt; CODEX</button>
+      <button class="ghost-btn" data-go="progress">&gt; STATS</button>
+      <button class="ghost-btn" id="resetBtn">&gt; RESET SAVE</button>
+    </div>
+    <p class="hint-line">USE ARROW KEYS / CLICK. PROGRESS SAVES TO THIS BROWSER.</p>
+  </section>
+
+  <!-- HUD -->
+  <header id="hud" class="hud hidden">
+    <div class="hud-left">
+      <span class="hud-label">LVL</span><span id="hudLevel">1</span>
+      <span class="hud-label">XP</span><span id="hudXp">0/50</span>
+      <span class="hud-label">CLEAR</span><span id="hudClear">0/50</span>
+    </div>
+    <nav class="hud-nav">
+      <button data-go="quests">QUESTS</button>
+      <button data-go="lessons">CODEX</button>
+      <button data-go="progress">STATS</button>
+      <button data-go="title">TITLE</button>
+    </nav>
+  </header>
+
+  <main id="view"></main>
+
+  <!-- TEMPLATES -->
+  <template id="tpl-quests">
+    <h2 class="page-title">&gt; QUEST LOG</h2>
+    <div class="filters">
+      <button data-filter="all" class="filter active">ALL</button>
+      <button data-filter="todo" class="filter">TODO</button>
+      <button data-filter="done" class="filter">CLEAR</button>
+      <select id="catFilter"><option value="all">ALL CATS</option></select>
+    </div>
+    <div id="questList" class="quest-list"></div>
+  </template>
+
+  <template id="tpl-quest">
+    <a class="back" data-go="quests">&lt; BACK</a>
+    <article id="questDetail" class="quest-detail"></article>
+  </template>
+
+  <template id="tpl-lessons">
+    <h2 class="page-title">&gt; CODEX</h2>
+    <ul id="lessonList" class="lesson-list"></ul>
+  </template>
+
+  <template id="tpl-lesson">
+    <a class="back" data-go="lessons">&lt; BACK</a>
+    <article id="lessonDetail" class="lesson-detail"></article>
+  </template>
+
+  <template id="tpl-progress">
+    <h2 class="page-title">&gt; STATS</h2>
+    <div id="progressBoard" class="progress-board"></div>
+  </template>
+
+  <footer class="footer">
+    <span>v1.0 // RETRO EDITION // </span>
+    <a href="https://leetcode.com/studyplan/top-sql-50/" target="_blank" rel="noopener">SRC</a>
+  </footer>
+
+  <script src="data.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
