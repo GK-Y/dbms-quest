@@ -138,11 +138,23 @@ def main() -> int:
         solution = "Solution pending until source data is added."
         runnable = False
         fixture_kind = "none"
+        setup_sql = ""
+        expected_sql = ""
+        expected_result = None
+        verify_table = ""
+        order_sensitive = True
         if fixture:
             runnable = True
             hint = fixture.get("hint", hint)
             solution = fixture.get("solution_sql", solution).strip()
             fixture_kind = "sample" if fixture.get("source_example") else "edge"
+            setup_sql = (fixture.get("setup_sql") or "").strip()
+            expected_sql = (fixture.get("expected_sql") or "").strip()
+            if "expected_result" in fixture:
+                cols, rows = fixture["expected_result"]
+                expected_result = {"columns": list(cols), "rows": [list(r) for r in rows]}
+            verify_table = fixture.get("verify_table") or ""
+            order_sensitive = bool(fixture.get("order_sensitive", True))
 
         prompt_html = ""
         path = sql50.source_path_for(q)
@@ -163,6 +175,11 @@ def main() -> int:
             "promptHtml": prompt_html,
             "hint": hint,
             "solution": solution,
+            "setupSql": setup_sql,
+            "expectedSql": expected_sql,
+            "expectedResult": expected_result,
+            "verifyTable": verify_table,
+            "orderSensitive": order_sensitive,
         })
 
     lessons_dir = ROOT / "lessons"

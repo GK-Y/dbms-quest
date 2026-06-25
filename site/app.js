@@ -3,6 +3,7 @@
 
   const DATA = window.DBMS_DATA || { questions: [], categories: [], lessons: [], seedProgress: {} };
   const STORE_KEY = "dbms_quest_progress_v1";
+  const SQL_STORE_PREFIX = "dbms_quest_sql_";
   const view = document.getElementById("view");
   const titleScreen = document.getElementById("title");
   const hud = document.getElementById("hud");
@@ -13,6 +14,16 @@
     filter: "all",
     catFilter: "all",
   };
+
+  // ---------- sql.js lazy loader ----------
+  let sqlPromise = null;
+  function getSql() {
+    if (!sqlPromise) {
+      sqlPromise = window.initSqlJs({ locateFile: f => "vendor/" + f })
+        .then(SQL => { beep("nav"); return SQL; });
+    }
+    return sqlPromise;
+  }
 
   function loadProgress() {
     try {
@@ -143,6 +154,146 @@
     });
   }
 
+  // ---------- SQL execution (in-browser via sql.js) ----------
+  function normRow(values) {
+    return values.map(v => (v === null || v === undefined) ? "" : String(v));
+  }
+
+  function extractResult(res) {
+    if (!res || !res.length) return { columns: [], rows: [] };
+    const last = res[res.length - 1];
+    return { columns: last.columns || [], rows: (last.values || []).map(normRow) };
+  }
+
+  function freshDb(SQL, q) {
+    const db = new SQL.Database();
+    db.run(q.setupSql);
+    return db;
+  }
+
+  function runUserSql(SQL, q, userSql) {
+    const db = freshDb(SQL, q);
+    let actual;
+    if (q.verifyTable) {
+      db.run(userSql);
+      const qt = q.verifyTable.replace(/"/g, '""');
+      actual = extractResult(db.exec(`SELECT * FROM "${qt}" ORDER BY id`));
+    } else {
+      actual = extractResult(db.exec(userSql));
+    }
+    db.close();
+    return actual;
+  }
+
+  function getExpected(SQL, q) {
+    if (q.expectedSql) {
+      const db = freshDb(SQL, q);
+      const exp = extractResult(db.exec(q.expectedSql));
+      db.close();
+      return exp;
+    }
+    if (q.expectedResult) {
+      return {
+        columns: q.expectedResult.columns,
+        rows: q.expectedResult.rows.map(normRow),
+      };
+    }
+    return null;
+  }
+
+  function resultsMatch(actual, expected, orderSensitive) {
+    if (!expected) return false;
+    if (actual.columns.join("|") !== expected.columns.join("|")) return false;
+    const a = actual.rows.map(r => r.join("\u0001"));
+    const e = expected.rows.map(r => r.join("\u0001"));
+    if (orderSensitive) return a.length === e.length && a.every((v, i) => v === e[i]);
+    if (a.length !== e.length) return false;
+    const sa = [...a].sort(), se = [...e].sort();
+    return sa.every((v, i) => v === se[i]);
+  }
+
+  function resultTableHtml(columns, rows) {
+    if (!columns.length && (!rows || !rows.length)) return '<p class="result-empty">-- NO ROWS RETURNED --</p>';
+    let h = '<table class="result"><thead><tr>';
+    columns.forEach(c => { h += `<th>${escapeHtml(c)}</th>`; });
+    h += '</tr></thead><tbody>';
+    if (!rows.length) { h += `<tr><td colspan="${columns.length}" class="result-empty">-- 0 ROWS --</td></tr>`; }
+    rows.forEach(r => {
+      h += "<tr>" + r.map(v => `<td>${escapeHtml(v)}</td>`).join("") + "</tr>";
+    });
+    h += "</tbody></table>";
+    h += `<p class="result-count">${rows.length} ROW(S)</p>`;
+    return h;
+  }
+
+  function sqlKey(id) { return SQL_STORE_PREFIX + id; }
+  function loadSql(id) {
+    try { return localStorage.getItem(sqlKey(id)) || ""; } catch (e) { return ""; }
+  }
+  function saveSql(id, sql) {
+    try { localStorage.setItem(sqlKey(id), sql); } catch (e) {}
+  }
+
+  async function handleRun(q, userSql, resultArea, statusEl) {
+    if (!userSql.trim()) { showStatus(statusEl, "EMPTY SQL", "err"); return; }
+    showStatus(statusEl, "COMPILING...", "dim");
+    try {
+      const SQL = await getSql();
+      const actual = runUserSql(SQL, q, userSql);
+      resultArea.innerHTML = resultTableHtml(actual.columns, actual.rows);
+      showStatus(statusEl, "RUN OK", "ok");
+      beep("nav");
+    } catch (e) {
+      resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
+      showStatus(statusEl, "ERROR", "err");
+      beep("err");
+    }
+  }
+
+  async function handleTest(q, userSql, resultArea, statusEl) {
+    if (!userSql.trim()) { showStatus(statusEl, "EMPTY SQL", "err"); return; }
+    showStatus(statusEl, "TESTING...", "dim");
+    try {
+      const SQL = await getSql();
+      const actual = runUserSql(SQL, q, userSql);
+      const expected = getExpected(SQL, q);
+      const passed = resultsMatch(actual, expected, q.orderSensitive);
+      let html = "";
+      if (passed) {
+        html = `<div class="test-banner pass">*** PASS ***</div>`;
+        html += resultTableHtml(actual.columns, actual.rows);
+        if (!isDone(q.id)) { state.progress.add(String(q.id)); saveProgress(); }
+        showStatus(statusEl, "PASS", "ok");
+        beep("up");
+      } else {
+        html = `<div class="test-banner fail">XXX FAIL XXX</div>`;
+        html += `<div class="result-cols"><div><h4>EXPECTED</h4>${resultTableHtml(expected.columns, expected.rows)}</div><div><h4>YOURS</h4>${resultTableHtml(actual.columns, actual.rows)}</div></div>`;
+        showStatus(statusEl, "FAIL", "err");
+        beep("err");
+      }
+      resultArea.innerHTML = html;
+      renderHud();
+      if (passed) updateCompleteBtn(q.id);
+    } catch (e) {
+      resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
+      showStatus(statusEl, "ERROR", "err");
+      beep("err");
+    }
+  }
+
+  function showStatus(el, text, kind) {
+    el.textContent = text;
+    el.className = "sql-status " + (kind || "");
+  }
+
+  function updateCompleteBtn(id) {
+    const btn = document.getElementById("completeBtn");
+    if (!btn) return;
+    const done = isDone(id);
+    btn.classList.toggle("done", done);
+    btn.textContent = done ? "[ CLEARED ] - UNDO" : "[ MARK CLEARED ]";
+  }
+
   // ---------- quest detail ----------
   function renderQuest(id) {
     const q = DATA.questions.find(x => String(x.id) === String(id));
@@ -181,6 +332,8 @@
         </div>
       </div>
 
+      ${q.runnable && q.setupSql ? renderEditorSlot() : '<p class="no-fixture">-- NO LOCAL FIXTURE: BRIEFING ONLY --</p>'}
+
       <button class="complete-btn ${done ? "done" : ""}" id="completeBtn">
         ${done ? "[ CLEARED ] - UNDO" : "[ MARK CLEARED ]"}
       </button>
@@ -196,6 +349,65 @@
     document.getElementById("completeBtn").addEventListener("click", () => {
       toggleDone(q.id);
       renderQuest(q.id);
+    });
+    if (q.runnable && q.setupSql) wireEditor(q);
+  }
+
+  function renderEditorSlot() {
+    const node = tpl("tpl-editor");
+    const slot = document.createElement("div");
+    slot.appendChild(node);
+    return slot.innerHTML;
+  }
+
+  function wireEditor(q) {
+    const input = document.getElementById("sqlInput");
+    const runBtn = document.getElementById("runBtn");
+    const testBtn = document.getElementById("testBtn");
+    const loadSolBtn = document.getElementById("loadSolBtn");
+    const clearBtn = document.getElementById("clearBtn");
+    const resultArea = document.getElementById("resultArea");
+    const statusEl = document.getElementById("sqlStatus");
+
+    input.value = loadSql(q.id);
+    input.addEventListener("input", () => saveSql(q.id, input.value));
+
+    // Ctrl/Cmd+Enter runs; Shift+Enter tests
+    input.addEventListener("keydown", (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        if (e.shiftKey) handleTest(q, input.value, resultArea, statusEl);
+        else handleRun(q, input.value, resultArea, statusEl);
+      }
+      // Tab inserts two spaces instead of leaving the textarea
+      if (e.key === "Tab") {
+        e.preventDefault();
+        const s = input.selectionStart, en = input.selectionEnd;
+        input.value = input.value.slice(0, s) + "  " + input.value.slice(en);
+        input.selectionStart = input.selectionEnd = s + 2;
+        saveSql(q.id, input.value);
+      }
+    });
+
+    runBtn.addEventListener("click", () => handleRun(q, input.value, resultArea, statusEl));
+    testBtn.addEventListener("click", () => handleTest(q, input.value, resultArea, statusEl));
+    loadSolBtn.addEventListener("click", () => {
+      if (!q.solution || q.solution.startsWith("--")) {
+        showStatus(statusEl, "NO SOLUTION", "err");
+        beep("err");
+        return;
+      }
+      input.value = q.solution;
+      saveSql(q.id, input.value);
+      showStatus(statusEl, "SOLUTION LOADED", "ok");
+      beep("nav");
+    });
+    clearBtn.addEventListener("click", () => {
+      input.value = "";
+      saveSql(q.id, "");
+      resultArea.innerHTML = "";
+      showStatus(statusEl, "CLEARED", "dim");
+      beep("down");
     });
   }
 

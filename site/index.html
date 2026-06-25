@@ -72,6 +72,21 @@
     <article id="questDetail" class="quest-detail"></article>
   </template>
 
+  <template id="tpl-editor">
+    <div class="editor-wrap">
+      <h3 class="editor-title">&gt; SQL CONSOLE</h3>
+      <textarea id="sqlInput" class="sql-input" spellcheck="false" autocomplete="off" autocapitalize="off" placeholder="-- write your SQL here, then press RUN or TEST"></textarea>
+      <div class="editor-bar">
+        <button id="runBtn" class="ed-btn run">&gt; RUN</button>
+        <button id="testBtn" class="ed-btn test">&gt; TEST</button>
+        <button id="loadSolBtn" class="ed-btn ghost">&gt; LOAD SOL</button>
+        <button id="clearBtn" class="ed-btn ghost">&gt; CLEAR</button>
+        <span id="sqlStatus" class="sql-status"></span>
+      </div>
+      <div id="resultArea" class="result-area"></div>
+    </div>
+  </template>
+
   <template id="tpl-lessons">
     <h2 class="page-title">&gt; CODEX</h2>
     <ul id="lessonList" class="lesson-list"></ul>
@@ -92,6 +107,7 @@
     <a href="https://leetcode.com/studyplan/top-sql-50/" target="_blank" rel="noopener">SRC</a>
   </footer>
 
+  <script src="vendor/sql-wasm.js"></script>
   <script src="data.js"></script>
   <script src="app.js"></script>
 </body>
