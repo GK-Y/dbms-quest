@@ -429,41 +429,52 @@
     view.replaceChildren(node);
     const detail = document.getElementById("questDetail");
     const done = isDone(q.id);
+    const runnable = q.runnable && q.setupSql;
     detail.innerHTML = `
       <div class="qd-head">
         <div>
           <div class="qd-title">${q.id} :: ${escapeHtml(q.title)}</div>
-          <div class="qd-meta">CATEGORY: <b>${escapeHtml(q.category)}</b> &nbsp; DIFF: <b>${q.difficulty}</b> &nbsp; ${q.runnable ? `FIXTURE: <b>${q.fixtureKind}</b>` : "<b>NO LOCAL FIXTURE</b>"}</div>
+          <div class="qd-meta">CATEGORY: <b>${escapeHtml(q.category)}</b> &nbsp; DIFF: <b>${q.difficulty}</b> &nbsp; ${runnable ? `FIXTURE: <b>${q.fixtureKind}</b>` : "<b>NO LOCAL FIXTURE</b>"}</div>
         </div>
         <a class="ext-link" href="${q.leetcode}" target="_blank" rel="noopener">&gt; LEETCODE</a>
       </div>
 
-      <div class="qd-section">
-        <h3><svg class="ic"><use href="#ic-scroll"/></svg> BRIEFING</h3>
-        <div class="qd-prompt">${q.promptHtml || "<p>No dumped prompt for this question.</p>"}</div>
-      </div>
+      <div class="qd-split">
+        <div class="qd-left" id="qdLeft">
+          <div class="qd-section">
+            <h3><svg class="ic"><use href="#ic-scroll"/></svg> BRIEFING</h3>
+            <div class="qd-prompt">${q.promptHtml || "<p>No dumped prompt for this question.</p>"}</div>
+          </div>
+          <div class="qd-section" id="schemaSection">
+            <h3><svg class="ic"><use href="#ic-shield"/></svg> TABLE DATA</h3>
+            <div id="schemaArea"><p class="result-empty">-- LOADING SCHEMA... --</p></div>
+          </div>
+        </div>
 
-      <div class="qd-section">
-        <h3><svg class="ic"><use href="#ic-scroll"/></svg> HINT</h3>
-        <div class="reveal-wrap">
-          <button class="reveal-btn" data-target="hint"><svg class="ic"><use href="#ic-scroll"/></svg> SHOW HINT</button>
-          <div class="reveal-body" id="hint"><pre>${escapeHtml(q.hint)}</pre></div>
+        <div class="qd-right" id="qdRight">
+          <div class="qd-section">
+            <h3><svg class="ic"><use href="#ic-scroll"/></svg> HINT</h3>
+            <div class="reveal-wrap">
+              <button class="reveal-btn" data-target="hint"><svg class="ic"><use href="#ic-scroll"/></svg> SHOW HINT</button>
+              <div class="reveal-body" id="hint"><pre>${escapeHtml(q.hint)}</pre></div>
+            </div>
+          </div>
+
+          <div class="qd-section">
+            <h3><svg class="ic"><use href="#ic-key"/></svg> SOLUTION</h3>
+            <div class="reveal-wrap">
+              <button class="reveal-btn" data-target="sol"><svg class="ic"><use href="#ic-key"/></svg> REVEAL</button>
+              <div class="reveal-body" id="sol"><pre><code>${escapeHtml(q.solution)}</code></pre></div>
+            </div>
+          </div>
+
+          ${runnable ? renderEditorSlot() : '<p class="no-fixture">-- NO LOCAL FIXTURE: BRIEFING ONLY --</p>'}
+
+          <button class="complete-btn ${done ? "done" : ""}" id="completeBtn">
+            <svg class="ic"><use href="#${done ? "ic-check" : "ic-trophy"}"/></svg> ${done ? "[ CLEARED ] - UNDO" : "[ MARK CLEARED ]"}
+          </button>
         </div>
       </div>
-
-      <div class="qd-section">
-        <h3><svg class="ic"><use href="#ic-key"/></svg> SOLUTION</h3>
-        <div class="reveal-wrap">
-          <button class="reveal-btn" data-target="sol"><svg class="ic"><use href="#ic-key"/></svg> REVEAL</button>
-          <div class="reveal-body" id="sol"><pre><code>${escapeHtml(q.solution)}</code></pre></div>
-        </div>
-      </div>
-
-      ${q.runnable && q.setupSql ? renderEditorSlot() : '<p class="no-fixture">-- NO LOCAL FIXTURE: BRIEFING ONLY --</p>'}
-
-      <button class="complete-btn ${done ? "done" : ""}" id="completeBtn">
-        <svg class="ic"><use href="#${done ? "ic-check" : "ic-trophy"}"/></svg> ${done ? "[ CLEARED ] - UNDO" : "[ MARK CLEARED ]"}
-      </button>
     `;
     detail.querySelectorAll(".reveal-btn").forEach(btn => {
       btn.addEventListener("click", () => {
@@ -479,7 +490,40 @@
       toggleDone(q.id);
       renderQuest(q.id);
     });
-    if (q.runnable && q.setupSql) wireEditor(q);
+    if (runnable) wireEditor(q);
+    if (runnable) loadSchema(q);
+    else document.getElementById("schemaArea").innerHTML = '<p class="result-empty">-- NO LOCAL FIXTURE --</p>';
+  }
+
+  async function loadSchema(q) {
+    const area = document.getElementById("schemaArea");
+    if (!area) return;
+    if (!(await checkBackend())) {
+      area.innerHTML = '<p class="result-empty">-- BACKEND OFFLINE --</p>';
+      return;
+    }
+    try {
+      const res = await api("/api/schema/" + q.id);
+      if (!res.tables || !res.tables.length) {
+        area.innerHTML = '<p class="result-empty">-- NO TABLES --</p>';
+        return;
+      }
+      let html = "";
+      res.tables.forEach(t => {
+        html += `<div class="schema-table"><h4>${escapeHtml(t.name)}</h4>`;
+        html += '<table class="result"><thead><tr><th>column</th><th>type</th></tr></thead><tbody>';
+        t.columns.forEach(c => { html += `<tr><td>${escapeHtml(c[0])}</td><td>${escapeHtml(c[1])}</td></tr>`; });
+        html += '</tbody></table>';
+        if (t.sample && t.sample.rows.length) {
+          html += '<p class="schema-sample-label">SAMPLE ROWS:</p>';
+          html += resultTableHtml(t.sample.columns, t.sample.rows);
+        }
+        html += '</div>';
+      });
+      area.innerHTML = html;
+    } catch (e) {
+      area.innerHTML = `<pre class="result-error">SCHEMA ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
+    }
   }
 
   function renderEditorSlot() {
