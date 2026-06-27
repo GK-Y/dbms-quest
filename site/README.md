@@ -1,8 +1,11 @@
 # DBMS QUEST // SQL 50 (Retro Edition)
 
-A retro-arcade-style site for grinding the LeetCode Top SQL 50 with a **real
-MySQL backend** — write, run, and test your SQL in the browser against actual
-MariaDB.
+**Live:** https://dbms-quest-ecru.vercel.app/
+
+A retro-arcade-style site for grinding the LeetCode Top SQL 50. Runs SQL two
+ways: a **real MariaDB backend** when running locally, and an **in-browser
+SQLite (sql.js) fallback** on static hosting like Vercel. The frontend
+auto-detects which engine is available.
 
 ## Run it
 
