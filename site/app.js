@@ -17,6 +17,10 @@
 
   // ---------- backend API ----------
   let backendOk = null;
+  let lastHealth = null;
+  let sqlJsPromise = null;
+  let activeEngine = null; // "mysql" | "sqlite" | null
+
   async function api(path, opts) {
     const r = await fetch(path, opts);
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -28,10 +32,65 @@
       const h = await api("/api/health");
       backendOk = !!(h && h.ok);
       lastHealth = h;
+      if (backendOk) activeEngine = "mysql";
     } catch (e) { backendOk = false; }
     return backendOk;
   }
-  let lastHealth = null;
+
+  // ---------- sql.js fallback (SQLite WASM, for static hosting like Vercel) ----------
+  function getSqlJs() {
+    if (!sqlJsPromise) {
+      sqlJsPromise = new Promise((resolve, reject) => {
+        if (window.initSqlJs) return resolve(window.initSqlJs({ locateFile: f => "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/" + f }));
+        const s = document.createElement("script");
+        s.src = "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js";
+        s.onload = () => {
+          if (!window.initSqlJs) return reject(new Error("sql.js failed to load"));
+          resolve(window.initSqlJs({ locateFile: f => "https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/" + f }));
+        };
+        s.onerror = () => reject(new Error("sql.js CDN unreachable"));
+        document.head.appendChild(s);
+      });
+    }
+    return sqlJsPromise;
+  }
+
+  function sqlNormRow(v) { return (v === null || v === undefined) ? "" : String(v); }
+  function sqlExtractResult(res) {
+    if (!res || !res.length) return { columns: [], rows: [] };
+    const last = res[res.length - 1];
+    return { columns: last.columns || [], rows: (last.values || []).map(r => r.map(sqlNormRow)) };
+  }
+  function sqlFreshDb(SQL, q) {
+    const db = new SQL.Database();
+    db.run(q.setupSql);
+    return db;
+  }
+  function sqlRunUser(SQL, q, userSql) {
+    const db = sqlFreshDb(SQL, q);
+    let actual;
+    if (q.verifyTable) {
+      db.run(userSql);
+      const qt = q.verifyTable.replace(/"/g, '""');
+      actual = sqlExtractResult(db.exec(`SELECT * FROM "${qt}" ORDER BY id`));
+    } else {
+      actual = sqlExtractResult(db.exec(userSql));
+    }
+    db.close();
+    return actual;
+  }
+  function sqlGetExpected(SQL, q) {
+    if (q.expectedSql) {
+      const db = sqlFreshDb(SQL, q);
+      const exp = sqlExtractResult(db.exec(q.expectedSql));
+      db.close();
+      return exp;
+    }
+    if (q.expectedResult) {
+      return { columns: q.expectedResult.columns, rows: q.expectedResult.rows.map(r => r.map(sqlNormRow)) };
+    }
+    return null;
+  }
 
   // ---------- pixel-art sprites ----------
   // Each icon: array of strings, '1' = fill (currentColor). Built into an SVG sprite.
@@ -367,61 +426,127 @@
   }
 
   function offlineBanner() {
-    return `<div class="result-error">BACKEND OFFLINE.<br>Start it in a terminal:<br><code>site/.venv/bin/python site/server.py</code><br>then reload.</div>`;
+    return `<div class="result-error">NO SQL ENGINE AVAILABLE.<br>Run locally with <code>site/.venv/bin/python site/server.py</code> for MySQL,<br>or ensure you have internet access for in-browser SQLite.</div>`;
   }
 
   async function handleRun(q, userSql, resultArea, statusEl) {
     if (!userSql.trim()) { showStatus(statusEl, "EMPTY SQL", "err"); return; }
-    if (!(await checkBackend())) { showStatus(statusEl, "BACKEND OFFLINE", "err"); resultArea.innerHTML = offlineBanner(); return; }
-    showStatus(statusEl, "RUNNING...", "dim");
+    const hasBackend = await checkBackend();
+    if (hasBackend) {
+      showStatus(statusEl, "RUNNING...", "dim");
+      try {
+        const res = await api("/api/run", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: q.id, sql: userSql }),
+        });
+        if (!res.ok) throw new Error(res.error || "run failed");
+        resultArea.innerHTML = resultTableHtml(res.result.columns, res.result.rows);
+        showStatus(statusEl, "RUN OK", "ok");
+        beep("nav");
+        return;
+      } catch (e) {
+        resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
+        showStatus(statusEl, "ERROR", "err");
+        beep("err");
+        return;
+      }
+    }
+    // Fallback: sql.js (SQLite WASM in browser)
+    showStatus(statusEl, "LOADING SQLITE...", "dim");
     try {
-      const res = await api("/api/run", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: q.id, sql: userSql }),
-      });
-      if (!res.ok) throw new Error(res.error || "run failed");
-      resultArea.innerHTML = resultTableHtml(res.result.columns, res.result.rows);
+      const SQL = await getSqlJs();
+      activeEngine = "sqlite";
+      updateEngineBadge();
+      const actual = sqlRunUser(SQL, q, userSql);
+      resultArea.innerHTML = resultTableHtml(actual.columns, actual.rows);
       showStatus(statusEl, "RUN OK", "ok");
       beep("nav");
     } catch (e) {
-      resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
-      showStatus(statusEl, "ERROR", "err");
+      resultArea.innerHTML = offlineBanner();
+      showStatus(statusEl, "NO ENGINE", "err");
       beep("err");
     }
   }
 
   async function handleTest(q, userSql, resultArea, statusEl) {
     if (!userSql.trim()) { showStatus(statusEl, "EMPTY SQL", "err"); return; }
-    if (!(await checkBackend())) { showStatus(statusEl, "BACKEND OFFLINE", "err"); resultArea.innerHTML = offlineBanner(); return; }
-    showStatus(statusEl, "TESTING...", "dim");
-    try {
-      const res = await api("/api/test", {
-        method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: q.id, sql: userSql }),
-      });
-      if (!res.ok) throw new Error(res.error || "test failed");
-      const passed = res.passed;
-      let html = "";
-      if (passed) {
-        html = `<div class="test-banner pass">*** PASS ***</div>`;
-        html += resultTableHtml(res.actual.columns, res.actual.rows);
-        if (!isDone(q.id)) { state.progress.add(String(q.id)); saveProgress(); }
-        showStatus(statusEl, "PASS", "ok");
-        beep("up");
-      } else {
-        html = `<div class="test-banner fail">XXX FAIL XXX</div>`;
-        const exp = res.expected || { columns: [], rows: [] };
-        html += `<div class="result-cols"><div><h4>EXPECTED</h4>${resultTableHtml(exp.columns, exp.rows)}</div><div><h4>YOURS</h4>${resultTableHtml(res.actual.columns, res.actual.rows)}</div></div>`;
-        showStatus(statusEl, "FAIL", "err");
+    const hasBackend = await checkBackend();
+    if (hasBackend) {
+      showStatus(statusEl, "TESTING...", "dim");
+      try {
+        const res = await api("/api/test", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: q.id, sql: userSql }),
+        });
+        if (!res.ok) throw new Error(res.error || "test failed");
+        renderTestResult(res.passed, res.actual, res.expected || { columns: [], rows: [] }, q, resultArea, statusEl);
+        return;
+      } catch (e) {
+        resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
+        showStatus(statusEl, "ERROR", "err");
         beep("err");
+        return;
       }
-      resultArea.innerHTML = html;
-      renderHud();
-      if (passed) updateCompleteBtn(q.id);
+    }
+    // Fallback: sql.js (SQLite WASM in browser)
+    showStatus(statusEl, "LOADING SQLITE...", "dim");
+    try {
+      const SQL = await getSqlJs();
+      activeEngine = "sqlite";
+      updateEngineBadge();
+      const actual = sqlRunUser(SQL, q, userSql);
+      const expected = sqlGetExpected(SQL, q);
+      const passed = resultsMatch(actual, expected, q.orderSensitive);
+      renderTestResult(passed, actual, expected, q, resultArea, statusEl);
     } catch (e) {
-      resultArea.innerHTML = `<pre class="result-error">SQL ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
-      showStatus(statusEl, "ERROR", "err");
+      resultArea.innerHTML = offlineBanner();
+      showStatus(statusEl, "NO ENGINE", "err");
       beep("err");
+    }
+  }
+
+  function resultsMatch(actual, expected, orderSensitive) {
+    if (!expected) return false;
+    if (actual.columns.join("|") !== expected.columns.join("|")) return false;
+    const a = actual.rows.map(r => r.join("\u0001"));
+    const e = expected.rows.map(r => r.join("\u0001"));
+    if (orderSensitive) return a.length === e.length && a.every((v, i) => v === e[i]);
+    if (a.length !== e.length) return false;
+    const sa = [...a].sort(), se = [...e].sort();
+    return sa.every((v, i) => v === se[i]);
+  }
+
+  function renderTestResult(passed, actual, expected, q, resultArea, statusEl) {
+    let html = "";
+    if (passed) {
+      html = `<div class="test-banner pass">*** PASS ***</div>`;
+      html += resultTableHtml(actual.columns, actual.rows);
+      if (!isDone(q.id)) { state.progress.add(String(q.id)); saveProgress(); }
+      showStatus(statusEl, "PASS", "ok");
+      beep("up");
+    } else {
+      html = `<div class="test-banner fail">XXX FAIL XXX</div>`;
+      html += `<div class="result-cols"><div><h4>EXPECTED</h4>${resultTableHtml(expected.columns, expected.rows)}</div><div><h4>YOURS</h4>${resultTableHtml(actual.columns, actual.rows)}</div></div>`;
+      showStatus(statusEl, "FAIL", "err");
+      beep("err");
+    }
+    resultArea.innerHTML = html;
+    renderHud();
+    if (passed) updateCompleteBtn(q.id);
+  }
+
+  function updateEngineBadge() {
+    const badge = document.getElementById("engineBadge");
+    if (!badge) return;
+    if (activeEngine === "mysql" && lastHealth) {
+      badge.textContent = "MYSQL " + (lastHealth.version || "").split("-")[0];
+      badge.className = "console-engine mysql";
+    } else if (activeEngine === "sqlite") {
+      badge.textContent = "SQLITE (BROWSER)";
+      badge.className = "console-engine sqlite";
+    } else {
+      badge.textContent = "...";
+      badge.className = "console-engine";
     }
   }
 
@@ -526,29 +651,60 @@
   async function loadSchema(q) {
     const area = document.getElementById("schemaArea");
     if (!area) return;
-    if (!(await checkBackend())) {
-      area.innerHTML = '<p class="result-empty">-- BACKEND OFFLINE --</p>';
-      return;
-    }
-    try {
-      const res = await api("/api/schema/" + q.id);
-      if (!res.tables || !res.tables.length) {
-        area.innerHTML = '<p class="result-empty">-- NO TABLES --</p>';
+    const hasBackend = await checkBackend();
+    if (hasBackend) {
+      try {
+        const res = await api("/api/schema/" + q.id);
+        if (!res.tables || !res.tables.length) {
+          area.innerHTML = '<p class="result-empty">-- NO TABLES --</p>';
+          return;
+        }
+        let html = "";
+        res.tables.forEach(t => {
+          html += `<div class="schema-table"><h4>${escapeHtml(t.name)}</h4>`;
+          html += '<table class="result"><thead><tr><th>column</th><th>type</th></tr></thead><tbody>';
+          t.columns.forEach(c => { html += `<tr><td>${escapeHtml(c[0])}</td><td>${escapeHtml(c[1])}</td></tr>`; });
+          html += '</tbody></table>';
+          if (t.sample && t.sample.rows.length) {
+            html += '<p class="schema-sample-label">SAMPLE ROWS:</p>';
+            html += resultTableHtml(t.sample.columns, t.sample.rows);
+          }
+          html += '</div>';
+        });
+        area.innerHTML = html;
+        return;
+      } catch (e) {
+        area.innerHTML = `<pre class="result-error">SCHEMA ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
         return;
       }
+    }
+    // Fallback: use sql.js to introspect schema in-browser
+    try {
+      const SQL = await getSqlJs();
+      const db = new SQL.Database();
+      db.run(q.setupSql);
+      const tablesRes = db.exec("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+      const tables = tablesRes.length ? tablesRes[0].values.map(r => r[0]) : [];
       let html = "";
-      res.tables.forEach(t => {
-        html += `<div class="schema-table"><h4>${escapeHtml(t.name)}</h4>`;
+      tables.forEach(t => {
+        const infoRes = db.exec(`PRAGMA table_info("${t.replace(/"/g,'""')}")`);
+        html += `<div class="schema-table"><h4>${escapeHtml(t)}</h4>`;
         html += '<table class="result"><thead><tr><th>column</th><th>type</th></tr></thead><tbody>';
-        t.columns.forEach(c => { html += `<tr><td>${escapeHtml(c[0])}</td><td>${escapeHtml(c[1])}</td></tr>`; });
+        if (infoRes.length) {
+          infoRes[0].values.forEach(row => {
+            html += `<tr><td>${escapeHtml(row[1])}</td><td>${escapeHtml(row[2])}</td></tr>`;
+          });
+        }
         html += '</tbody></table>';
-        if (t.sample && t.sample.rows.length) {
+        const sampleRes = db.exec(`SELECT * FROM "${t.replace(/"/g,'""')}" LIMIT 5`);
+        if (sampleRes.length) {
           html += '<p class="schema-sample-label">SAMPLE ROWS:</p>';
-          html += resultTableHtml(t.sample.columns, t.sample.rows);
+          html += resultTableHtml(sampleRes[0].columns, sampleRes[0].values.map(r => r.map(sqlNormRow)));
         }
         html += '</div>';
       });
-      area.innerHTML = html;
+      db.close();
+      area.innerHTML = html || '<p class="result-empty">-- NO TABLES --</p>';
     } catch (e) {
       area.innerHTML = `<pre class="result-error">SCHEMA ERROR: ${escapeHtml(String(e.message || e))}</pre>`;
     }
@@ -574,17 +730,14 @@
     input.value = loadSql(q.id);
     input.addEventListener("input", () => saveSql(q.id, input.value));
 
-    // engine badge
-    badge.textContent = "...";
-    badge.className = "console-engine";
+    // engine badge: check backend, fall back to sqlite label
     checkBackend().then(ok => {
-      if (ok && lastHealth) {
-        badge.textContent = "MYSQL " + (lastHealth.version || "").split("-")[0];
-        badge.className = "console-engine mysql";
+      if (ok) {
+        activeEngine = "mysql";
       } else {
-        badge.textContent = "OFFLINE";
-        badge.className = "console-engine offline";
+        activeEngine = "sqlite"; // will use sql.js on first RUN/TEST
       }
+      updateEngineBadge();
     });
 
     // Ctrl/Cmd+Enter runs; Shift+Enter tests

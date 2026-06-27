@@ -329,7 +329,21 @@ def find_q(qid):
     raise HTTPException(404, "unknown question")
 
 
-# Serve the static site last (so /api routes win)
+# Serve the static site last (so /api routes win), with no-cache headers so
+# browser always fetches fresh JS/CSS during development.
+from starlette.middleware.base import BaseHTTPMiddleware  # noqa: E402
+from starlette.responses import Response  # noqa: E402
+
+
+class NoCacheMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        resp = await call_next(request)
+        if isinstance(resp, Response) and not request.url.path.startswith("/api"):
+            resp.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        return resp
+
+
+app.add_middleware(NoCacheMiddleware)
 app.mount("/", StaticFiles(directory=str(SITE_DIR), html=True), name="site")
 
 
