@@ -593,7 +593,7 @@
       </div>
 
       <div class="qd-split">
-        <div class="qd-left" id="qdLeft">
+        <div class="qd-pane" id="qdLeft">
           <div class="qd-section">
             <h3><svg class="ic"><use href="#ic-scroll"/></svg> BRIEFING</h3>
             <div class="qd-prompt">${q.promptHtml || "<p>No dumped prompt for this question.</p>"}</div>
@@ -602,9 +602,6 @@
             <h3><svg class="ic"><use href="#ic-shield"/></svg> TABLE DATA</h3>
             <div id="schemaArea"><p class="result-empty">-- LOADING SCHEMA... --</p></div>
           </div>
-        </div>
-
-        <div class="qd-right" id="qdRight">
           <div class="qd-section">
             <h3><svg class="ic"><use href="#ic-scroll"/></svg> HINT</h3>
             <div class="reveal-wrap">
@@ -612,7 +609,6 @@
               <div class="reveal-body" id="hint"><pre>${escapeHtml(q.hint)}</pre></div>
             </div>
           </div>
-
           <div class="qd-section">
             <h3><svg class="ic"><use href="#ic-key"/></svg> SOLUTION</h3>
             <div class="reveal-wrap">
@@ -620,7 +616,9 @@
               <div class="reveal-body" id="sol"><pre><code>${escapeHtml(q.solution)}</code></pre></div>
             </div>
           </div>
+        </div>
 
+        <div class="qd-pane" id="qdRight">
           ${runnable ? renderEditorSlot() : '<p class="no-fixture">-- NO LOCAL FIXTURE: BRIEFING ONLY --</p>'}
 
           <button class="complete-btn ${done ? "done" : ""}" id="completeBtn">
